@@ -58,20 +58,32 @@ def pid(error_x, error_y, kp, ki, kd):
 # *****************************************************************************
 
 
-def pid2(error_x, error_y, kp, ki, kd, delta_t):  # 考虑采样时间delta_t
+def pid2(error_x, error_y, kp, ki, kd, delta_t, anti_i_flag=False):  # 考虑采样时间delta_t, 抗积分饱和
+    """
+    delta_t:考虑采样时间的原因可以参考微信收藏：防止单次循环时间不稳定对PID移动量的影响。
+    anti_i_flag:借用抗积分饱和这个类似的概念。这里的实际作用是，如果error跟上一次的error符号相反，说明已经追上目标了，
+    但是积分项的累计作用可能仍有“惯性”，会继续往反方向作用，导致震荡。设置为True则之前的error_sum_x会清0。
+
+    """
     # 离散形式PID
     global error_sum_x
     global error_sum_y
     global pre_error_x
     global pre_error_y
     Pout_x = kp * error_x
-    error_sum_x += (error_x * delta_t)
+    if anti_i_flag and error_x * pre_error_x < 0:  # “抗饱和”
+        error_sum_x = error_x * delta_t  # 之前的清0，这次重新开始计算
+    else:
+        error_sum_x += (error_x * delta_t)
     Iout_x = ki * error_sum_x
     Dout_x = kd * (error_x - pre_error_x) / delta_t
     pre_error_x = error_x
 
     Pout_y = kp * error_y
-    error_sum_y += (error_y * delta_t)
+    if anti_i_flag and error_y * pre_error_y < 0:  # “抗饱和”
+        error_sum_y = error_y * delta_t
+    else:
+        error_sum_y += (error_y * delta_t)
     Iout_y = ki * error_sum_y
     Dout_y = kd * (error_y - pre_error_y) / delta_t
     pre_error_y = error_y
@@ -181,7 +193,8 @@ def lock(aims, top_x, top_y, len_x, len_y, delta_t, args):
         print("Before PID: ", -rel_x, -rel_y)  # for debug
         if args.lock_strategy == 'pid':
             # rel_x, rel_y = pid(rel_x, rel_y, args.p_i_d[0], args.p_i_d[1], args.p_i_d[2])
-            rel_x, rel_y = pid2(rel_x, rel_y, args.p_i_d[0], args.p_i_d[1], args.p_i_d[2], delta_t)  # 考虑采样时间delta_t
+            # rel_x, rel_y = pid2(rel_x, rel_y, args.p_i_d[0], args.p_i_d[1], args.p_i_d[2], delta_t)  # 考虑采样时间
+            rel_x, rel_y = pid2(rel_x, rel_y, args.p_i_d[0], args.p_i_d[1], args.p_i_d[2], delta_t, args.anti_flag)  # 考虑采样时间及抗饱和
 
         print("After PID: ", -rel_x, -rel_y)  # for debug
         ghub.mouse_xy(-rel_x, -rel_y)
