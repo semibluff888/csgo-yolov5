@@ -84,6 +84,7 @@ parser.add_argument('--lock-strategy', type=str, default='pid', help='lock模式
 # 如果采用PID算法2，即考虑采样时间，经测试，平均loop时间为0.016810093150538507秒，平均FPS(即倒数):59.5。则原PID参数的I应该放大60倍，D要缩小60倍。
 parser.add_argument('--p-i-d', type=tuple, default=(0.8, 0.1*60, 0.1/60), help='PID控制算法p,i,d参数调整')
 # parser.add_argument('--p-i-d', type=tuple, default=(0.8, 0.1, 0.1), help='PID控制算法p,i,d参数调整')
+parser.add_argument('--anti-flag', type=bool, default=False, help='PID抗积分饱和, True则error_sum_x会清0')  # True震荡小了，但P和I貌似要增加
 ###########################################################################################
 parser.add_argument('--recoil-sen', type=float, default=1, help='压枪幅度；自己调，调到合适')
 parser.add_argument('--recoil-button', type=str, default='x1', help='ak47压枪按键；只支持鼠标按键,用不到置为0')
