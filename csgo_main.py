@@ -17,7 +17,7 @@ from utils.augmentations import letterbox
 import time
 import os
 import pynput
-from csgo.aim_lock import lock, recoil_control, reset_pid_error
+from csgo.aim_lock import Locker
 # from threading import Thread
 import argparse
 import winsound
@@ -41,6 +41,7 @@ parser.add_argument('--thickness', type=int, default=3, help='画框粗细，必
 parser.add_argument('--show-fps', type=bool, default=True, help='是否显示帧率')
 parser.add_argument('--show-label', type=bool, default=True, help='是否显示标签')
 parser.add_argument('--show-conf', type=bool, default=True, help='是否显示置信度')  # added by Bo
+parser.add_argument('--show-debug-info', type=bool, default=False, help='是否显示Debug信息，比如检测时间、FPS、PID信息等')  # added by Bo
 
 # TBD:pyqt5的方式，因为窗体的标题栏和边框问题，目前最终计算的像素位置，跟mss可能还是有些许偏差(详见下文中计算窗体及屏幕相关信息的部分)，mss跟模型实际的锁定位置完全一致。
 # 截屏方式：'pyqt5','mss','win32'
@@ -58,6 +59,7 @@ parser.add_argument('--region-stay-center', type=bool, default=True, help='为Fa
 # 原up主下面这两个参数作用实际一样的，作用重复。
 parser.add_argument('--lock-sen', type=float, default=1.4, help='lock幅度系数；若在桌面试用请调成1，在游戏中(csgo)则为灵敏度')
 parser.add_argument('--lock-smooth', type=float, default=3, help='lock平滑系数；越大越平滑，最低1.0')  # up之前默认是3(yolov5-6.1重构版本)
+parser.add_argument('--lock-smooth-bo', type=float, default=1, help='lock平滑系数；越大越平滑，最低1.0')  # Bo 计算FOV后的调整参数
 ###########################################################################################
 
 
@@ -102,24 +104,27 @@ conf_thres = args.conf_thres
 iou_thres = args.iou_thres
 
 
+# 初始化Locker类
+locker = Locker(args)
+
 # 窗体及屏幕相关信息(放在while循环之前增加FPS)
 if args.screenshot_method == 'pyqt5':
     hwnd = win32gui.FindWindow(None, 'Counter-Strike: Global Offensive - Direct3D 9')  # CSGO窗口模式
     x1, y1, x2, y2 = win32gui.GetWindowRect(hwnd)  # 返回的是窗口左上角与右下角坐标：x1,y1,x2,y2: 637 342 1923 1097  (csgo 1280*720分辨率下)
     # x1, y1, x2, y2 = get_window_rect(hwnd)  # 貌似这个网上的自定义方法跟上面官方的效果差不多了，官方的估计已经修复
     # len_x, len_y = 1280, 720  # hard code
-    top_x, top_y = x1, y1
-    len_x, len_y = x2 - x1, y2 - y1
-    # print(top_x, top_y, len_x, len_y)  # bo debug
+    locker.top_x, locker.top_y = x1, y1
+    locker.len_x, locker.len_y = x2 - x1, y2 - y1
+    # print(locker.top_x, locker.top_y, locker.len_x, locker.len_y)  # bo debug
     # 注意：csgo 设置1280*720分辨率下，返回值包含了边框部分特别是标题栏的像素！！即print(top_x, top_y, len_x, len_y)： 637 342 1286 755
     # 但后面pyqt5实际截图时，图片大小确实只有1280*720，对比mss的值可以发现，窗体的左右边框厚度，应该是各占640-637=3个像素，水平方向刚好(1923-3)-(637+3)=1280像素
     # 同理猜测窗体的下边框也是3个像素(但似乎是5个像素才对的上，不太理解)。窗体的上边框即标题栏，经实际测量应该是30像素，所以截图是从y=372开始，垂直方向(1097-5)-372=720像素
     # 似乎也可能上边框是32个像素，下边框为3个像素，哎，无所谓了！
     # 所以，重新调整截图区域的真实位置！！
-    top_x = top_x + 3
-    top_y = top_y + 30
-    len_x = x2 - 3 - top_x  # 1280
-    len_y = y2 - 5 - top_y  # 720
+    locker.top_x = locker.top_x + 3
+    locker.top_y = locker.top_y + 30
+    locker.len_x = x2 - 3 - locker.top_x  # 1280
+    locker.len_y = y2 - 5 - locker.top_y  # 720
     # TBD： pyqt5似乎仍然还是有些偏差！！
 else:  # screenshot_method == 'mss'
     top_x, top_y, x, y = get_parameters()
@@ -128,24 +133,21 @@ else:  # screenshot_method == 'mss'
         # top_x, top_y = int(top_x + x // 2 * (1. - args.region[0])), int(top_y + y // 2 * (1. - args.region[1]))
         # 注意：返回值区别于pyqt5！1280*720分辨率下，print(top_x, top_y, len_x, len_y)： 640 360 1280 720
         # Bo: 注意使用tensorRT生成的engine文件加速推理时，要将输入图片改成正方形，不然后面的letterbox函数会报错，得修改auto参数为False，但这样又会影响推理速度，故截图取正方形
-        len_x, len_y = args.region[0], args.region[1]
-        top_x, top_y = int(x // 2 - args.region[0] / 2), int(y // 2 - args.region[1] / 2)
+        locker.len_x, locker.len_y = args.region[0], args.region[1]
+        locker.top_x, locker.top_y = int(x // 2 - args.region[0] / 2), int(y // 2 - args.region[1] / 2)
     else:  # 不要求始终保持屏幕中心为中心，则跟pyqt5一样去寻找位置。但这样效果并不好，不推荐！
         hwnd = win32gui.FindWindow(None, 'Counter-Strike: Global Offensive - Direct3D 9')  # CSGO窗口模式
         x1, y1, x2, y2 = win32gui.GetWindowRect(hwnd)  # 返回的是窗口左上角与右下角坐标：x1,y1,x2,y2
-        top_x, top_y = x1, y1
-        len_x, len_y = x2 - x1, y2 - y1
-    monitor = {'left': top_x, 'top': top_y, 'width': len_x, 'height': len_y}
+        locker.top_x, locker.top_y = x1, y1
+        locker.len_x, locker.len_y = x2 - x1, y2 - y1
+    monitor = {'left': locker.top_x, 'top': locker.top_y, 'width': locker.len_x, 'height': locker.len_y}
 
 model, stride, names = load_model(args)  # names返回的是pt文件中包含的classes的字典信息,如果是engine文件貌似就没有类别名称，只有序号了！！
 
 if args.show_window:
     cv2.namedWindow('csgo-detect', cv2.WINDOW_NORMAL)
-    cv2.resizeWindow('csgo-detect', int(len_x * args.resize_window), int(len_y * args.resize_window))
+    cv2.resizeWindow('csgo-detect', int(locker.len_x * args.resize_window), int(locker.len_y * args.resize_window))
 
-lock_mode = False
-# mouse = pynput.mouse.Controller()  # 同时创建Controller和下面的Listener的非阻塞版本的话，貌似B站视频up主说有时候会出问题！！
-# TBD!!!!!
 
 # B站up主的视频yolov5 csgo压枪代码(yolov5-6.1重构)
 # *******************************************************************************
@@ -154,30 +156,31 @@ lock_mode = False
 # t.start()  # 非阻塞，程序会继续往下运行
 # *******************************************************************************
 
+# mouse = pynput.mouse.Controller()  # 同时创建Controller和下面的Listener的非阻塞版本的话，貌似B站视频up主说有时候会出问题！！
+# TBD!!!!!
 
 # 鼠标侧键x2的事件监听
 def on_click(x, y, button, pressed):
-    global lock_mode
     if button == eval('pynput.mouse.Button.' + args.lock_button):  # x2侧键，事件触发模式切换
         if args.hold_lock:
             if pressed:
-                lock_mode = True
+                locker.lock_mode = True
                 print('locking...')
                 if args.lock_sound:
                     winsound.Beep(1000, 300)
             else:
-                lock_mode = False
+                locker.lock_mode = False
                 print('lock mode off')
                 if args.lock_sound:
                     winsound.Beep(500, 300)
         else:
             if pressed:
-                lock_mode = not lock_mode
-                print('lock mode', 'on' if lock_mode else 'off')
+                locker.lock_mode = not locker.lock_mode
+                print('lock mode', 'on' if locker.lock_mode else 'off')
                 if args.lock_sound:
-                    winsound.Beep(1000 if lock_mode else 500, 300)
-                if not lock_mode:  # 关闭锁定时，PID清0
-                    reset_pid_error()
+                    winsound.Beep(1000 if locker.lock_mode else 500, 300)
+                if not locker.lock_mode:  # 关闭锁定时，PID清0
+                    locker.reset_pid_error()
 
     # else:  # 如果是其他按键，比如按了右键
     #     # Stop listener
@@ -189,20 +192,16 @@ listener.start()  # 非阻塞版本，启动一个线程来监听
 
 
 # 键盘监听事件: 警匪锁定目标切换
-ct_mode = False
-
-
 def on_press(key):
-    global ct_mode
     if key == pynput.keyboard.Key.shift:
-        ct_mode = not ct_mode
-        print('ct mode', 'on' if ct_mode else 'off')
+        locker.ct_mode = not locker.ct_mode
+        print('ct mode', 'on' if locker.ct_mode else 'off')
         if args.lock_sound:
-            winsound.Beep(1000 if ct_mode else 500, 300)
-        if ct_mode:  # if ct then lock t
-            args.lock_choice = ['0', '1']  # 注意是str类型
+            winsound.Beep(1000 if locker.ct_mode else 500, 300)
+        if locker.ct_mode:  # if ct then lock t
+            locker.lock_choice = ['0', '1']  # 注意是str类型
         else:
-            args.lock_choice = ['2', '3']
+            locker.lock_choice = ['2', '3']
 
 
 def on_release(key):
@@ -243,16 +242,17 @@ while True:
         # 注意，下面的grab_screen_mss返回值是(height, width, channel)
         # cv2里面的cv2.imread和cv2.resize的返回值，也一样，都是(H,W,C)
         img0 = grab_screen_mss(monitor)
-        img0 = cv2.resize(img0, (len_x, len_y))  # 注意第2个参数是目标size，是元组形式(w,h)，顺序与输入(HWC)相反。
+        img0 = cv2.resize(img0, (locker.len_x, locker.len_y))  # 注意第2个参数是目标size，是元组形式(w,h)，顺序与输入(HWC)相反。
         # 上面这句话似乎没用
     else:
-        img0 = grab_screen_win32(region=(top_x, top_y, top_x + len_x, top_y + len_y))
-        img0 = cv2.resize(img0, (len_x, len_y))
+        img0 = grab_screen_win32(region=(locker.top_x, locker.top_y, locker.top_x + locker.len_x, locker.top_y + locker.len_y))
+        img0 = cv2.resize(img0, (locker.len_x, locker.len_y))
 
     # added by Bo for debug
-    sum_time1 += (time.time() - t0)
-    print('截图 took {} seconds'.format(time.time() - t0), ', 平均截图时间为', sum_time1 / (cnt + 1))
-    t1 = time.time()
+    if args.show_debug_info:
+        sum_time1 += (time.time() - t0)
+        print('截图 took {} seconds'.format(time.time() - t0), ', 平均截图时间为', sum_time1 / (cnt + 1))
+        t1 = time.time()
 
     img = letterbox(img0, imgsz, stride=stride, auto=True)[0]
     # 注意：推理时如果用tensorrt加速，即.engine文件去跑，如果截图的输入不是640*640的矩形，则会报下面的错误，得修改上面的auto参数为False!但又会影响推理速度，所以修改截图为正方形
@@ -270,8 +270,9 @@ while True:
     pred = non_max_suppression(pred, conf_thres, iou_thres)
 
     # added by Bo for debug
-    sum_time2 += (time.time() - t1)
-    print('检测 took {} seconds'.format(time.time() - t1), ', 平均检测时间为', sum_time2/(cnt+1))
+    if args.show_debug_info:
+        sum_time2 += (time.time() - t1)
+        print('检测 took {} seconds'.format(time.time() - t1), ', 平均检测时间为', sum_time2/(cnt+1))
 
     aims = []
     for i, det in enumerate(pred):  # Bo:这个循环貌似有点冗余，up主新版代码这里已经去掉了
@@ -295,10 +296,9 @@ while True:
             # print(f'检测到的个数：{len(aims)}')  # added by Bo
 
         if len(aims):
-            if lock_mode:
+            if locker.lock_mode:
                 # Bo: 注意，用pyqt5截图的话，移动窗体后，top_x和top_y位置变了，自瞄可能出问题！
-                # lock(aims, mouse, top_x, top_y, len_x, len_y, lock_choice, head_first)
-                lock(aims, top_x, top_y, len_x, len_y, (time.time()-t0), args)  # (time.time()-t0): PID算法考虑采样时间delta_t
+                locker.lock(aims, (time.time()-t0))  # PID算法考虑采样时间delta_t
 
             if args.show_window:
                 for i, det in enumerate(aims):
@@ -307,8 +307,8 @@ while True:
                         tag, x_center, y_center, width, height, conf = det
                     else:
                         tag, x_center, y_center, width, height = det
-                    x_center, width = len_x * float(x_center), len_x * float(width)
-                    y_center, height = len_y * float(y_center), len_y * float(height)
+                    x_center, width = locker.len_x * float(x_center), locker.len_x * float(width)
+                    y_center, height = locker.len_y * float(y_center), locker.len_y * float(height)
                     top_left = (int(x_center - width / 2.), int(y_center - height / 2.))
                     bottom_right = (int(x_center + width / 2.), int(y_center + height / 2.))
                     # cv2.rectangle(img0, top_left, bottom_right, (0, 255, 0), thickness=thickness)
@@ -338,15 +338,8 @@ while True:
                         cv2.putText(img0, label, top_left, cv2.FONT_HERSHEY_SIMPLEX, 1.25, (255, 255, 255), args.thickness,
                                     lineType=cv2.LINE_AA)
         else:  # len(aims) == 0，即没有目标时,PID清0
-            if args.lock_strategy == 'pid':
-                reset_pid_error()
-
-    # added by Bo for debug
-    sum_time3 += (time.time() - t0)
-    print('loop took {} seconds'.format(time.time() - t0),
-          "FPS:{:.1f}".format(1. / (time.time() - t0)))
-    print('平均loop时间为', sum_time3 / (cnt + 1),
-          "平均FPS:{:.1f}".format(1. / (sum_time3 / (cnt + 1))))
+            if locker.lock_strategy == 'pid':
+                locker.reset_pid_error()
 
     if args.show_window:
         if args.show_fps:
@@ -359,8 +352,19 @@ while True:
             win32gui.SetWindowPos(hwnd, win32con.HWND_TOPMOST, 0, 0, 0, 0, win32con.SWP_NOMOVE | win32con.SWP_NOSIZE)
         cv2.waitKey(1)
 
+    # added by Bo for debug
+    sum_time3 += (time.time() - t0)
+    # if args.show_debug_info:
+    if True:
+        if cnt % 300 == 0:  # 每秒大概60帧，即每5秒打印一次
+            print('loop took {} seconds'.format(time.time() - t0),
+                  "FPS:{:.1f}".format(1. / (time.time() - t0)))
+            print('平均loop时间为', sum_time3 / (cnt + 1),
+                  "平均FPS:{:.1f}".format(1. / (sum_time3 / (cnt + 1))))
+
     t0 = time.time()
 
     # time.sleep(0.3)  # 加延时检查算法移动效果，要移动几次
     # time.sleep(5 / 1000)  # up主github最新代码加了这个：检测帧率控制(ms)，防止因快速拉枪导致的残影误检
     cnt += 1
+    # time.sleep(0.01)  # 加10ms延迟，貌似帧数低一些，比如每秒30帧，似乎更加稳定不抖动？
