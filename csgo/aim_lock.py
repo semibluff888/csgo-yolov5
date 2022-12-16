@@ -4,8 +4,10 @@ from math import *
 import pynput
 import csv
 import time
+import random
 
 mouse = pynput.mouse.Controller()
+keyboard = pynput.keyboard.Controller()
 
 
 class Locker(object):
@@ -19,6 +21,7 @@ class Locker(object):
         self.lock_mode = False
         self.ct_mode = False  # added by Bo
         self.show_conf = args.show_conf  # added by Bo
+        self.auto_shoot = args.auto_shoot  # Bo: 自动开枪模式
 
         self.head_first = args.head_first
         self.lock_tag = args.lock_tag
@@ -37,6 +40,7 @@ class Locker(object):
         self.pre_error_y = 0
         self.shot_time = 0  # 自动开枪逻辑: 记录射击时间，保证两枪的间隔时间
         self.last_locked_time = 0  # 自动开枪逻辑：记录最后一次存在锁定目标的时间，如果长时间没有锁定目标，则鼠标移动
+        self.last_turn_around_time = 0  # 自动开枪逻辑：记录最后一次调整方向的时间，防止转身过快
 
 # *****************************************************************************
 # PID算法相关：参考B站up主Caesar的PID方法实现，但疑似error_sum项不清0的话，积分项容易累积？
@@ -140,6 +144,8 @@ class Locker(object):
                 tag, x_center, y_center, width, height = det
             x_center, width = self.len_x * float(x_center) + self.top_x, self.len_x * float(width)
             y_center, height = self.len_y * float(y_center) + self.top_y, self.len_y * float(height)
+            # print('target size is ', width, height)  # for debug
+
             # *****************************************************************************
             # 算法1：up主的方法，默认参数下比较平滑，但要几帧才能拉到位置，目标高速移动情况下可能较难命中(需要改变参数最好达到1帧拉枪)
             # rel_x = int(k / self.lock_sen * atan((mouse_pos_x - x_center) / 640) * 640)
@@ -199,12 +205,13 @@ class Locker(object):
 
             print("Before PID: ", -rel_x, -rel_y)  # for debug
 
-            # Bo：测试自动开枪！！在PID之前的距离更接近真实距离(虽然是按FOV换算后的鼠标距离)
+            # Bo：自动开枪模式。在PID之前的距离值更接近真实距离(虽然是按FOV换算后的鼠标距离)
             # TBD：开枪考虑远近距离，提前量？
-            if abs(rel_x) < 2 and abs(rel_y) < 2 and (time.time() - self.shot_time > 3):
-                ghub.mouse_down()
-                ghub.mouse_up()
-                self.shot_time = time.time()
+            if self.auto_shoot:
+                if abs(rel_x) < 2 and abs(rel_y) < 2 and (time.time() - self.shot_time > 3):
+                    ghub.mouse_down()
+                    ghub.mouse_up()
+                    self.shot_time = time.time()
 
             # if abs(rel_x) < 3 and abs(rel_y) < 3:  # for debug
             #     print('locked!!!')
@@ -217,11 +224,29 @@ class Locker(object):
 
             ghub.mouse_xy(-rel_x, -rel_y)
 
-        else:  # len(aims_copy) == 0，即没有要锁定的目标时
+        else:  # len(aims_copy) == 0，即没有要“锁定”的目标时
             if self.lock_strategy == 'pid':  # PID清0
                 self.reset_pid_error()
-            if time.time() - self.last_locked_time > 3:  # 自动开枪逻辑:3秒内没有锁定目标则鼠标移动
-                ghub.mouse_xy(1500, 0)
+            if self.auto_shoot:  # 自动开枪逻辑:3秒内没有锁定目标则鼠标移动
+                if time.time() - self.last_locked_time > 3:
+                    self.auto_turn_around()
+
+    # Bo: 自动开枪逻辑，如果没有目标则调整方向
+    def auto_turn_around(self):
+        if time.time() - self.last_turn_around_time > 3:
+            keyboard.press('q')  # 切换武器
+            keyboard.release('q')
+            time.sleep(0.1)  # 切换武器时间间隔，不能太快
+            keyboard.press('q')  # 切换武器
+            keyboard.release('q')
+            time.sleep(0.1)  # 切换武器时间间隔，不能太快
+            ghub.mouse_xy(int(4000 * (2 * random.random() - 1)), 0)  # 随机调整一定方向
+            # awp狙击枪逻辑
+            time.sleep(1.2)  # 切换武器后，打开狙击镜需要的最少时间
+            ghub.mouse_down(2)  # 右键开镜
+            ghub.mouse_up(2)
+            self.last_turn_around_time = time.time()
+
 
     def recoil_control(self, args):
         """

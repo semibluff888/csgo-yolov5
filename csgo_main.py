@@ -18,9 +18,11 @@ import time
 import os
 import pynput
 from csgo.aim_lock import Locker
+import csgo.ghub_mouse as ghub
 # from threading import Thread
 import argparse
 import winsound
+import random
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--model-path', type=str,
@@ -34,6 +36,7 @@ parser.add_argument('--imgsz', type=int, default=640, help='和你训练模型�
 parser.add_argument('--conf-thres', type=float, default=0.30, help='置信阈值')  # yolov5 default 0.25; up主default 0.75
 parser.add_argument('--iou-thres', type=float, default=0.45, help='交并比阈值')
 
+# Bo: show_window貌似会降低30帧的速度。。
 parser.add_argument('--show-window', type=bool, default=False, help='是否显示实时检测窗口(新版里改进了效率。若为True，不要去点右上角的X！)')
 parser.add_argument('--top-most', type=bool, default=True, help='是否保持实时检测窗口置顶')
 parser.add_argument('--resize-window', type=float, default=1/2, help='缩放实时检测窗口大小')
@@ -87,9 +90,11 @@ parser.add_argument('--lock-strategy', type=str, default='pid', help='lock模式
 parser.add_argument('--p-i-d', type=tuple, default=(0.8, 0.1*60, 0.1/60), help='PID控制算法p,i,d参数调整')
 # parser.add_argument('--p-i-d', type=tuple, default=(0.8, 0.1, 0.1), help='PID控制算法p,i,d参数调整')
 parser.add_argument('--anti-flag', type=bool, default=False, help='PID抗积分饱和, True则error_sum_x会清0')  # True震荡小了，但P和I貌似要增加
+parser.add_argument('--auto-shoot', type=bool, default=True, help='是否开启自动射击模式')  # Bo: 自动开枪模式
 ###########################################################################################
 parser.add_argument('--recoil-sen', type=float, default=1, help='压枪幅度；自己调，调到合适')
 parser.add_argument('--recoil-button', type=str, default='x1', help='ak47压枪按键；只支持鼠标按键,用不到置为0')
+
 
 args = parser.parse_args()
 
@@ -337,9 +342,13 @@ while True:
                         cv2.rectangle(img0, p1, p2, color, -1, cv2.LINE_AA)  # filled
                         cv2.putText(img0, label, top_left, cv2.FONT_HERSHEY_SIMPLEX, 1.25, (255, 255, 255), args.thickness,
                                     lineType=cv2.LINE_AA)
-        else:  # len(aims) == 0，即没有目标时,PID清0
-            if locker.lock_strategy == 'pid':
-                locker.reset_pid_error()
+        else:  # len(aims) == 0，即没有目标时
+            if locker.lock_mode:
+                if locker.lock_strategy == 'pid':  # PID清0
+                    locker.reset_pid_error()
+                if locker.auto_shoot:  # 自动开枪逻辑:3秒内没有锁定目标则鼠标移动
+                    if time.time() - locker.last_locked_time > 3:
+                        locker.auto_turn_around()
 
     if args.show_window:
         if args.show_fps:
