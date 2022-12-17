@@ -88,7 +88,8 @@ parser.add_argument('--lock-strategy', type=str, default='pid', help='lock模式
 parser.add_argument('--p-i-d', type=tuple, default=(0.8, 0.1*60, 0.1/60), help='PID控制算法p,i,d参数调整')
 # parser.add_argument('--p-i-d', type=tuple, default=(0.8, 0.1, 0.1), help='PID控制算法p,i,d参数调整')
 parser.add_argument('--anti-flag', type=bool, default=False, help='PID抗积分饱和, True则error_sum_x会清0')  # True震荡小了，但P和I貌似要增加
-parser.add_argument('--auto-shoot', type=bool, default=True, help='是否开启自动射击模式')  # Bo: 自动开枪模式
+parser.add_argument('--auto-shoot', type=bool, default=False, help='是否开启自动射击模式')  # Bo: 自动开枪模式
+parser.add_argument('--auto-switch', type=bool, default=False, help='是否开启自动切枪')  # Bo: 自动开枪模式时,awp射击后自动切枪
 ###########################################################################################
 parser.add_argument('--recoil-sen', type=float, default=1, help='压枪幅度；自己调，调到合适')
 parser.add_argument('--recoil-button', type=str, default='x1', help='ak47压枪按键；只支持鼠标按键,用不到置为0')
@@ -185,6 +186,14 @@ def on_click(x, y, button, pressed):
                 if not locker.lock_mode:  # 关闭锁定时，PID清0
                     locker.reset_pid_error()
 
+    # 测试功能：在开枪自动开枪时，且开枪awp自动切枪时，鼠标左键(松开时)的事件监听：
+    if locker.auto_shoot and locker.auto_switch:
+        if button == pynput.mouse.Button.left:  # awo左键开枪
+            # 松开左键时，Released的时候，否则会卡。。建议更改后面的time.sleep，变成根据时间判断。。。
+            if not pressed:
+                print('awp auto switching')
+                locker.awp_auto_switch_after_shoot()
+
     # else:  # 如果是其他按键，比如按了右键
     #     # Stop listener
     #     return False  # 调用这个语句，会停止事件监听，这个方法就结束失效了，即使是在这个非阻塞版中(阻塞版也会失效)
@@ -216,7 +225,7 @@ def on_press(key):
             if args.lock_sound:
                 winsound.Beep(1000, 300)
 
-    if hasattr(key, 'vk') and key.vk == 101:  # 小键盘的5切换自动开枪模式： 注意！并不是所有的key都有vk属性，其他按键key.vk会报错
+    if hasattr(key, 'vk') and key.vk == 101:  # 小键盘5：切换自动开枪模式。 注意！并不是所有的key都有vk属性，其他按键key.vk会报错
         locker.auto_shoot = not locker.auto_shoot
         print('auto shoot mode', 'on' if locker.auto_shoot else 'off')
         if args.lock_sound:
@@ -231,6 +240,13 @@ def on_press(key):
     #             winsound.Beep(1000 if locker.auto_shoot else 500, 300)
     # except AttributeError:
     #     pass
+
+    if hasattr(key, 'vk') and key.vk == 98:  # 小键盘2：在自动开枪模式时，awp射击后是否自动切枪
+        if locker.auto_shoot:  # 仅在自动开枪模式时
+            locker.auto_switch = not locker.auto_switch
+            print('auto switch mode', 'on' if locker.auto_switch else 'off')
+            if args.lock_sound:
+                winsound.Beep(1000 if locker.auto_switch else 500, 300)
 
 
 def on_release(key):

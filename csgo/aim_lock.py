@@ -22,6 +22,7 @@ class Locker(object):
         self.lock_t_or_ct = 0  # added by Bo; 调整lock_choice锁人：0默认值，代表锁全部，1代表锁T，2代表锁CT
         self.show_conf = args.show_conf  # added by Bo
         self.auto_shoot = args.auto_shoot  # Bo: 自动开枪模式
+        self.auto_switch = args.auto_switch  # Bo: 自动开枪模式时,awp射击后是否自动切枪
 
         self.head_first = args.head_first
         self.lock_tag = args.lock_tag
@@ -251,8 +252,8 @@ class Locker(object):
             self.last_turn_around_time = time.time()
 
     # 自动开枪模式中，狙击枪开枪后，自动切枪+瞄准，放到另外一个线程监听左键点击事件
-    def awp_auto_q(self):
-        time.sleep(0.01)  # 按完左键不能太快切枪，不能太快
+    def awp_auto_switch_after_shoot(self):
+        time.sleep(0.1)  # 按完左键不能太快切枪，不能太快
         keyboard.press('q')  # 切换武器
         keyboard.release('q')
         time.sleep(0.1)  # 切换武器时间间隔，不能太快
