@@ -233,7 +233,7 @@ class Locker(object):
 
     # Bo: 自动开枪逻辑，如果没有目标则调整方向
     def auto_turn_around(self):
-        if time.time() - self.last_turn_around_time > 3:
+        if time.time() - self.last_turn_around_time > 2:  # 最多2秒转向一次
             keyboard.press('q')  # 切换武器
             keyboard.release('q')
             time.sleep(0.1)  # 切换武器时间间隔，不能太快
@@ -241,6 +241,8 @@ class Locker(object):
             keyboard.release('q')
             time.sleep(0.1)  # 切换武器时间间隔，不能太快
             ghub.mouse_xy(int(4000 * (2 * random.random() - 1)), 0)  # 随机调整一定方向
+            # ghub.mouse_xy(int(4000 * (2 * random.random() - 1)), int(3228 / 4 * (2 * random.random() - 1)))  # 随机调整一定方向
+
             # awp狙击枪逻辑
             time.sleep(1.2)  # 切换武器后，打开狙击镜需要的最少时间
             ghub.mouse_down(2)  # 右键开镜
@@ -248,6 +250,19 @@ class Locker(object):
             time.sleep(0.3)  # 狙击枪开镜后等待0.3s完全变准，https://www.zhihu.com/question/481410529/answer/2620888017?utm_id=0
             self.last_turn_around_time = time.time()
 
+    # 自动开枪模式中，狙击枪开枪后，自动切枪+瞄准，放到另外一个线程监听左键点击事件
+    def awp_auto_q(self):
+        time.sleep(0.01)  # 按完左键不能太快切枪，不能太快
+        keyboard.press('q')  # 切换武器
+        keyboard.release('q')
+        time.sleep(0.1)  # 切换武器时间间隔，不能太快
+        keyboard.press('q')  # 切换武器
+        keyboard.release('q')
+        time.sleep(0.1)  # 切换武器时间间隔，不能太快
+        time.sleep(1.2)  # 切换武器后，打开狙击镜需要的最少时间
+        ghub.mouse_down(2)  # 右键开镜
+        ghub.mouse_up(2)
+        time.sleep(0.3)  # 狙击枪开镜后等待0.3s完全变准
 
     def recoil_control(self, args):
         """
