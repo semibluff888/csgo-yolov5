@@ -1,0 +1,19 @@
+
+# Train/val/test sets as 1) dir: path/to/imgs, 2) file: path/to/imgs.txt, or 3) list: [path/to/imgs1, path/to/imgs2, ..]path: ../datasets/coco128  # dataset root dir
+#train: J:\Project\yolov5\mydatasets\csgo_for_training1\images\train
+#train: J:/Project/yolov5/mydatasets/csgo_for_training1/images/train
+#train: ../mydatasets/csgo_for_training1/images/train
+train: J:\Project\yolov5\mydatasets\csgo_for_training4\images\train
+#val: J:\Project\yolov5\mydatasets\csgo_for_training1\images\val
+#val: J:/Project/yolov5/mydatasets/csgo_for_training1/images/val
+#val: ../mydatasets/csgo_for_training1/images/val
+val: J:\Project\yolov5\mydatasets\csgo_for_training4\images\val
+test:  # test images (optional)
+
+# Classes
+names:
+  0: t_head
+  1: t_body
+  2: ct_head
+  3: ct_body
+
