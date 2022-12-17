@@ -18,7 +18,7 @@ import time
 import os
 import pynput
 from csgo.aim_lock import Locker
-# from threading import Thread
+from threading import Thread
 import argparse
 import winsound
 
@@ -183,16 +183,22 @@ def on_click(x, y, button, pressed):
                 print('lock mode', 'on' if locker.lock_mode else 'off')
                 if args.lock_sound:
                     winsound.Beep(1000 if locker.lock_mode else 500, 300)
-                if not locker.lock_mode:  # 关闭锁定时，PID清0
+                if not locker.lock_mode:  # 关闭锁定时，PID清0，关闭auto_shoot和auto_switch. Added by Bo.
                     locker.reset_pid_error()
+                    locker.auto_shoot = False
+                    locker.auto_switch = False
+                    print('auto shoot mode off', 'auto switch mode off')
 
-    # 测试功能：在开枪自动开枪时，且开枪awp自动切枪时，鼠标左键(松开时)的事件监听：
-    if locker.auto_shoot and locker.auto_switch:
-        if button == pynput.mouse.Button.left:  # awo左键开枪
-            # 松开左键时，Released的时候，否则会卡。。建议更改后面的time.sleep，变成根据时间判断。。。
-            if not pressed:
-                print('awp auto switching')
-                locker.awp_auto_switch_after_shoot()
+    # 切枪测试方法一(不推荐)：在开启自动开枪，且开枪awp自动切枪时，鼠标左键(松开时)的事件监听：
+    # 注意：切枪操作放在on_click这里的话，切枪里面的time.sleep()操作，貌似会阻塞主线程即main loop，造成卡顿的情况，不推荐这么写。
+    # *******************************************************************************
+    # if locker.auto_shoot and locker.auto_switch:
+    #     if button == pynput.mouse.Button.left:  # awp左键开枪
+    #         # 松开左键时，Released的时候，否则会卡。。建议更改后面的time.sleep，变成根据时间判断。。。
+    #         if not pressed:
+    #             print('awp auto switching')
+    #             locker.awp_auto_switch_after_shoot()
+    # *******************************************************************************
 
     # else:  # 如果是其他按键，比如按了右键
     #     # Stop listener
@@ -201,6 +207,16 @@ def on_click(x, y, button, pressed):
 
 listener = pynput.mouse.Listener(on_click=on_click)
 listener.start()  # 非阻塞版本，启动一个线程来监听
+
+
+# 切枪测试方法二(推荐)：在开枪自动开枪时，且开枪awp自动切枪时，鼠标左键(松开时)的事件监听
+# 注意：切枪操作的方法中因为存在time.sleep操作，为了避免阻塞主程序，通过python多线程Thread的方式启动监听。
+# *******************************************************************************
+# 启动一个线程，并将封装有事件监听的方法名作为target参数传入，其中args参数须为元组形式。
+# 注意，线程的target指定的方法：awp_auto_switch_after_shoot必须定义为静态方法！！否则，用小写的locker(实例化对象)的实例方法，下面的语句不起作用！！
+t = Thread(target=Locker.awp_auto_switch_after_shoot, args=(locker,))
+t.start()  # 非阻塞，程序会继续往下运行
+# *******************************************************************************
 
 
 # 键盘监听事件:
@@ -382,7 +398,7 @@ while True:
                         cv2.rectangle(img0, p1, p2, color, -1, cv2.LINE_AA)  # filled
                         cv2.putText(img0, label, top_left, cv2.FONT_HERSHEY_SIMPLEX, 1.25, (255, 255, 255), args.thickness,
                                     lineType=cv2.LINE_AA)
-        else:  # len(aims) == 0，即没有目标时
+        else:  # len(aims) == 0，即没有目标时. Added by Bo.
             if locker.lock_mode:
                 if locker.lock_strategy == 'pid':  # PID清0
                     locker.reset_pid_error()
