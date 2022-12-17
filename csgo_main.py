@@ -18,11 +18,9 @@ import time
 import os
 import pynput
 from csgo.aim_lock import Locker
-import csgo.ghub_mouse as ghub
 # from threading import Thread
 import argparse
 import winsound
-import random
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--model-path', type=str,
@@ -196,17 +194,27 @@ listener = pynput.mouse.Listener(on_click=on_click)
 listener.start()  # 非阻塞版本，启动一个线程来监听
 
 
-# 键盘监听事件: 警匪锁定目标切换
+# 键盘监听事件: 警匪锁定目标切换，调整lock_choice锁人
 def on_press(key):
     if key == pynput.keyboard.Key.shift:
-        locker.ct_mode = not locker.ct_mode
-        print('ct mode', 'on' if locker.ct_mode else 'off')
-        if args.lock_sound:
-            winsound.Beep(1000 if locker.ct_mode else 500, 300)
-        if locker.ct_mode:  # if ct then lock t
+        if locker.lock_t_or_ct == 0:  # if lock all, then to lock t
+            locker.lock_t_or_ct = 1
+            print('lock t only.')
             locker.lock_choice = ['0', '1']  # 注意是str类型
-        else:
-            locker.lock_choice = ['2', '3']
+            if args.lock_sound:
+                winsound.Beep(300, 300)
+        elif locker.lock_t_or_ct == 1:  # if lock t, then to lock ct
+            locker.lock_t_or_ct = 2
+            print('lock ct only.')
+            locker.lock_choice = ['2', '3']  # 注意是str类型
+            if args.lock_sound:
+                winsound.Beep(600, 300)
+        else:  # if lock ct, then to lock all
+            locker.lock_t_or_ct = 0
+            print('lock all.')
+            locker.lock_choice = ['0', '1', '2', '3']  # 注意是str类型
+            if args.lock_sound:
+                winsound.Beep(1000, 300)
 
 
 def on_release(key):
