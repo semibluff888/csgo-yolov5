@@ -19,7 +19,7 @@ class Locker(object):
 
         self.flag = 0  # up主的原压枪标识
         self.lock_mode = False
-        self.ct_mode = False  # added by Bo
+        self.lock_t_or_ct = 0  # added by Bo; 调整lock_choice锁人：0默认值，代表锁全部，1代表锁T，2代表锁CT
         self.show_conf = args.show_conf  # added by Bo
         self.auto_shoot = args.auto_shoot  # Bo: 自动开枪模式
 
@@ -208,7 +208,7 @@ class Locker(object):
             # Bo：自动开枪模式。在PID之前的距离值更接近真实距离(虽然是按FOV换算后的鼠标距离)
             # TBD：开枪考虑远近距离，提前量？
             if self.auto_shoot:
-                if abs(rel_x) < 2 and abs(rel_y) < 2 and (time.time() - self.shot_time > 3):
+                if abs(rel_x) < 2 and abs(rel_y) < 2 and (time.time() - self.shot_time > 2.2):  # 狙击枪开枪+自动开镜大概的时间间隔
                     ghub.mouse_down()
                     ghub.mouse_up()
                     self.shot_time = time.time()
@@ -245,6 +245,7 @@ class Locker(object):
             time.sleep(1.2)  # 切换武器后，打开狙击镜需要的最少时间
             ghub.mouse_down(2)  # 右键开镜
             ghub.mouse_up(2)
+            time.sleep(0.3)  # 狙击枪开镜后等待0.3s完全变准，https://www.zhihu.com/question/481410529/answer/2620888017?utm_id=0
             self.last_turn_around_time = time.time()
 
 
