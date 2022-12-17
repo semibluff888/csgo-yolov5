@@ -33,7 +33,7 @@ class INPUT(Structure):
 
 
 def SendInput(*inputs):
-    print(inputs)
+    # print(inputs)  # commented by Bo
     nInputs = len(inputs)
     LPINPUT = INPUT * nInputs
     pInputs = LPINPUT(*inputs)
@@ -54,7 +54,7 @@ def Mouse(flags, x=0, y=0, data=0):
 
 
 def mouse_xy(x, y):  # for import
-    if gmok:  # Bo:经测试，罗技驱动方式移动耗时快N倍。但似乎在实战中跟下面的SendInput win32方法区别不是太大。
+    if gmok:  # Bo:经测试，罗技驱动方式移动耗时快N倍。但似乎在实战中跟下面的SendInput win32方法区别不是太大。但是同样的移动量，貌似也少移动很多。。。
         return gm.moveR(x, y)
     return SendInput(Mouse(0x0001, x, y))  # Bo: 这种方式会print信息
 

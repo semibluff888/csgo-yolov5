@@ -275,7 +275,7 @@ class Locker(object):
     # 假如使用的是类的实例方法(小写的locker调用)，比如Thread(target=locker.awp_auto_switch_after_shoot，则程序不会起作用。。。！！
     @staticmethod
     def awp_auto_switch_after_shoot(locker):
-        print("auto switch thread is starting...")
+        # print("auto switch thread is starting...")
         with pynput.mouse.Events() as events:
             for event in events:  # 注意：程序会阻塞在这里，知道监听到任意鼠标事件：移动，点击，等等
                 # *****************************************************************************

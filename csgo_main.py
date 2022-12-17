@@ -21,6 +21,7 @@ from csgo.aim_lock import Locker
 from threading import Thread
 import argparse
 import winsound
+import csgo.ghub_mouse as ghub
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--model-path', type=str,
@@ -57,10 +58,13 @@ parser.add_argument('--region-stay-center', type=bool, default=True, help='为Fa
 
 
 ###########################################################################################
-# 原up主下面这两个参数作用实际一样的，作用重复。
+# 原up主下面的前两个参数作用实际一样的，作用重复。
 parser.add_argument('--lock-sen', type=float, default=1.4, help='lock幅度系数；若在桌面试用请调成1，在游戏中(csgo)则为灵敏度')
 parser.add_argument('--lock-smooth', type=float, default=3, help='lock平滑系数；越大越平滑，最低1.0')  # up之前默认是3(yolov5-6.1重构版本)
-parser.add_argument('--lock-smooth-bo', type=float, default=1, help='lock平滑系数；越大越平滑，最低1.0')  # Bo 计算FOV后的调整参数
+parser.add_argument('--lock-smooth-bo', type=float, default=1, help='lock平滑系数；越大越平滑，最低1.0')  # Bo:计算FOV后的调整参数
+# 注意：使用ghub驱动需要安装ghub旧版.exe且开机后打开驱动软件。参考J:\Project\yolov5\ghub.txt
+# 暂时不推荐使用。。。TBD: 同等的鼠标移动量，在CSGO里面，使用罗技ghub驱动貌似比win32要小很多。但貌似静态目标情况下，移动又更加震荡。。。
+parser.add_argument('--use-ghub-device', type=bool, default=False, help='是否使用罗技ghub驱动操控鼠标')  # added by Bo
 ###########################################################################################
 
 
@@ -98,6 +102,11 @@ parser.add_argument('--recoil-button', type=str, default='x1', help='ak47压枪�
 args = parser.parse_args()
 
 cur_dir = os.path.dirname(os.path.abspath(__file__)) + '\\'
+
+# Bo: 是否使用ghub驱动操作鼠标，如果设置为False，即使ghub驱动可用(即ghub.gmok == 1)也不会起作用。(详见ghub_mouse.py代码)
+ghub.gmok = (ghub.gmok and args.use_ghub_device)  # ghub.gmok为全局的跨模块变量，可以修改，并且在另外一个文件中会生效
+# python导入另一个文件中的变量: https://code-examples.net/zh-CN/q/22cd1
+print('当前鼠标操控方式为：', 'ghub' if ghub.gmok else 'win32')
 
 args.lock_tag = [str(i) for i in args.lock_tag]  # 转str方便后面lock函数进行str判断
 args.lock_choice = [str(i) for i in args.lock_choice]  # 转str方便后面lock函数进行str判断
