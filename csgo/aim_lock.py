@@ -244,26 +244,62 @@ class Locker(object):
             ghub.mouse_xy(int(4000 * (2 * random.random() - 1)), 0)  # 随机调整一定方向
             # ghub.mouse_xy(int(4000 * (2 * random.random() - 1)), int(3228 / 4 * (2 * random.random() - 1)))  # 随机调整一定方向
 
-            # awp狙击枪逻辑
+            # 仅适用于awp狙击枪
             time.sleep(1.2)  # 切换武器后，打开狙击镜需要的最少时间
             ghub.mouse_down(2)  # 右键开镜
             ghub.mouse_up(2)
             time.sleep(0.3)  # 狙击枪开镜后等待0.3s完全变准，https://www.zhihu.com/question/481410529/answer/2620888017?utm_id=0
             self.last_turn_around_time = time.time()
 
-    # 自动开枪模式中，狙击枪开枪后，自动切枪+瞄准，放到另外一个线程监听左键点击事件
-    def awp_auto_switch_after_shoot(self):
-        time.sleep(0.1)  # 按完左键不能太快切枪，不能太快
-        keyboard.press('q')  # 切换武器
-        keyboard.release('q')
-        time.sleep(0.1)  # 切换武器时间间隔，不能太快
-        keyboard.press('q')  # 切换武器
-        keyboard.release('q')
-        time.sleep(0.1)  # 切换武器时间间隔，不能太快
-        time.sleep(1.2)  # 切换武器后，打开狙击镜需要的最少时间
-        ghub.mouse_down(2)  # 右键开镜
-        ghub.mouse_up(2)
-        time.sleep(0.3)  # 狙击枪开镜后等待0.3s完全变准
+    # 切枪测试方法一(不推荐)：在开启自动开枪，且开枪awp自动切枪时，鼠标左键(松开时)的事件监听：
+    # 注意：这里的切枪操作放在pynput.mouse.Listener的on_click监听，下面的time.sleep()操作，貌似会阻塞主线程即main loop，
+    # 造成卡顿的情况，所以不推荐这么写，下面就注释掉了！
+    # *******************************************************************************
+    # def awp_auto_switch_after_shoot(self):
+    #     time.sleep(0.1)  # 按完左键不能太快切枪，不能太快
+    #     keyboard.press('q')  # 切换武器
+    #     keyboard.release('q')
+    #     time.sleep(0.1)  # 切换武器时间间隔，不能太快
+    #     keyboard.press('q')  # 切换武器
+    #     keyboard.release('q')
+    #     time.sleep(0.1)  # 切换武器时间间隔，不能太快
+    #     time.sleep(1.2)  # 切换武器后，打开狙击镜需要的最少时间
+    #     ghub.mouse_down(2)  # 右键开镜
+    #     ghub.mouse_up(2)
+    #     time.sleep(0.3)  # 狙击枪开镜后等待0.3s完全变准
+    # *******************************************************************************
+
+    # 切枪测试方法二(推荐)：在开枪自动开枪时，且开枪awp自动切枪时，鼠标左键(松开时)的事件监听：
+    # 注意：这里的切枪操作因为存在time.sleep操作，为了避免阻塞主程序，通过python多线程Thread的方式启动监听。
+    # 而且注意必须定义为类的静态方法，启动多线程时用大写的类名Locker.静态方法名指定，即Thread(target=”大写类名.静态方法名“
+    # 假如使用的是类的实例方法(小写的locker调用)，比如Thread(target=locker.awp_auto_switch_after_shoot，则程序不会起作用。。。！！
+    @staticmethod
+    def awp_auto_switch_after_shoot(locker):
+        print("auto switch thread is starting...")
+        with pynput.mouse.Events() as events:
+            for event in events:  # 注意：程序会阻塞在这里，知道监听到任意鼠标事件：移动，点击，等等
+                # *****************************************************************************
+                # if auto_shoot and auto_switch:
+                # 注意：如果方法传入的参数不是实例化的类对象locker。而是仅传入locker的2个属性值，比如auto_shoot和auto_switch，似乎实际传入的参数
+                # 仅仅为值的拷贝，并非是引用。这种情况下，使用上面if判断，始终是初始化启动Thread时locker的2个属性值的拷贝，并不会动态变化。
+                # *****************************************************************************
+                if locker.auto_shoot and locker.auto_switch:  # 仅在自动开枪和自动切枪同时打开下，生效！
+                    if isinstance(event, pynput.mouse.Events.Click):
+                        if event.button == pynput.mouse.Button.left:
+                            if not event.pressed:  # 松开左键时
+                                print('awp auto switching')
+                                time.sleep(0.1)  # 按完左键不能太快切枪，不能太快
+                                keyboard.press('q')  # 切换武器
+                                keyboard.release('q')
+                                time.sleep(0.1)  # 切换武器时间间隔，不能太快
+                                keyboard.press('q')  # 切换武器
+                                keyboard.release('q')
+                                time.sleep(0.1)  # 切换武器时间间隔，不能太快
+                                time.sleep(1.2)  # 切换武器后，打开狙击镜需要的最少时间
+                                ghub.mouse_down(2)  # 右键开镜
+                                ghub.mouse_up(2)
+                                # 因为这里是多线程，主程序并不会阻塞，所以下面的最后这句sleep实际上没用，注释掉了
+                                # time.sleep(0.3)  # 狙击枪开镜后等待0.3s完全变准
 
     def recoil_control(self, args):
         """
