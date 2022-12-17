@@ -31,7 +31,7 @@ parser.add_argument('--model-path', type=str,
                     help='模型地址')
 parser.add_argument('--use-cuda', type=bool, default=True, help='是否使用cuda')
 parser.add_argument('--imgsz', type=int, default=640, help='和你训练模型时imgsz一样')
-parser.add_argument('--conf-thres', type=float, default=0.30, help='置信阈值')  # yolov5 default 0.25; up主default 0.75
+parser.add_argument('--conf-thres', type=float, default=0.50, help='置信阈值')  # yolov5 default 0.25; up主default 0.75
 parser.add_argument('--iou-thres', type=float, default=0.45, help='交并比阈值')
 
 # Bo: show_window貌似会降低30帧的速度。。
@@ -194,9 +194,9 @@ listener = pynput.mouse.Listener(on_click=on_click)
 listener.start()  # 非阻塞版本，启动一个线程来监听
 
 
-# 键盘监听事件: 警匪锁定目标切换，调整lock_choice锁人
+# 键盘监听事件:
 def on_press(key):
-    if key == pynput.keyboard.Key.shift:
+    if key == pynput.keyboard.Key.shift:  # Shift键：警匪锁定目标切换，调整lock_choice锁人
         if locker.lock_t_or_ct == 0:  # if lock all, then to lock t
             locker.lock_t_or_ct = 1
             print('lock t only.')
@@ -215,6 +215,22 @@ def on_press(key):
             locker.lock_choice = ['0', '1', '2', '3']  # 注意是str类型
             if args.lock_sound:
                 winsound.Beep(1000, 300)
+
+    if hasattr(key, 'vk') and key.vk == 101:  # 小键盘的5切换自动开枪模式： 注意！并不是所有的key都有vk属性，其他按键key.vk会报错
+        locker.auto_shoot = not locker.auto_shoot
+        print('auto shoot mode', 'on' if locker.auto_shoot else 'off')
+        if args.lock_sound:
+            winsound.Beep(1000 if locker.auto_shoot else 500, 300)
+
+    # # 小键盘数字5的另外一种写法。注意！并不是所有的key都有vk属性，其他按键key.vk会报错
+    # try:
+    #     if key.vk == 101:  # 小键盘的5
+    #         locker.auto_shoot = not locker.auto_shoot
+    #         print('auto shoot mode', 'on' if locker.auto_shoot else 'off')
+    #         if args.lock_sound:
+    #             winsound.Beep(1000 if locker.auto_shoot else 500, 300)
+    # except AttributeError:
+    #     pass
 
 
 def on_release(key):
