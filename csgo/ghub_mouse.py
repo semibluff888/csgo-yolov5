@@ -54,9 +54,9 @@ def Mouse(flags, x=0, y=0, data=0):
 
 
 def mouse_xy(x, y):  # for import
-    if gmok:  # Bo:经测试，罗技驱动方式移动耗时快N倍。但似乎在实战中跟下面的SendInput win32方法区别不是太大。但是同样的移动量，貌似也少移动很多。。。
+    if gmok:  # Bo:经测试，罗技驱动方式移动耗时快N倍。但移动量似乎有些问题，有些场景远小于win32，但是似乎静态目标又更震荡？！TBD
         return gm.moveR(x, y)
-    return SendInput(Mouse(0x0001, x, y))  # Bo: 这种方式会print信息
+    return SendInput(Mouse(0x0001, x, y))  # Bo: 这种方式原代码会print信息,但已被Bo注释掉
 
 
 def mouse_down(key = 1):  # for import
