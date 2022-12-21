@@ -34,7 +34,8 @@ class Locker(object):
         # PID相关
         self.kp, self.ki, self.kd = args.p_i_d
         self.lock_strategy = args.lock_strategy
-        self.anti_i_flag = args.anti_flag  # added by Bo:抗积分饱和
+        self.anti_i_flag = args.anti_flag  # (效果不好暂时弃用)added by Bo:抗积分饱和
+        self.i_max = args.i_max  # added by Bo: 设置PID的积分项I的上限值，防止超调
         self.error_sum_x = 0
         self.error_sum_y = 0
         self.pre_error_x = 0
@@ -76,7 +77,7 @@ class Locker(object):
         return int(Pout_x + Iout_x + Dout_x), int(Pout_y + Iout_y + Dout_y)
     # *****************************************************************************
 
-    def pid2(self, error_x, error_y, delta_t):  # 考虑采样时间delta_t, 抗积分饱和
+    def pid2(self, error_x, error_y, delta_t):  # 考虑采样时间delta_t, 抗积分饱和(效果不好暂时弃用)
         """
         delta_t:考虑采样时间的原因可以参考微信收藏：防止单次循环时间不稳定对PID移动量的影响。
         anti_i_flag:借用抗积分饱和这个类似的概念。这里的实际作用是，如果error跟上一次的error符号相反，说明已经追上目标了，
@@ -105,6 +106,36 @@ class Locker(object):
         #       " pre_error_x: ", self.pre_error_x, " pre_error_y: ", self.pre_error_y)
 
         return int(Pout_x + Iout_x + Dout_x), int(Pout_y + Iout_y + Dout_y)
+    # *****************************************************************************
+
+    def pid3(self, error_x, error_y, delta_t):  # 考虑采样时间delta_t, 设置PID的积分项I的上限值，不再取int(因为修改为了像素距离)
+        """
+        delta_t:考虑采样时间的原因可以参考微信收藏：防止单次循环时间不稳定对PID移动量的影响。
+        i_max:设置PID的积分项I的上限值，防止超调。参考qq群的资料，板球PID里面有。
+        """
+        # 离散形式PID
+        Pout_x = self.kp * error_x
+        self.error_sum_x += (error_x * delta_t)
+        Iout_x = self.ki * self.error_sum_x
+        if Iout_x > self.i_max:  # 设置PID的积分项I的上限值
+            Iout_x = self.i_max
+            # print('pid i max trigger!')  # for debug
+        elif Iout_x < -self.i_max:
+            Iout_x = -self.i_max
+            # print('pid i max trigger!')  # for debug
+        Dout_x = self.kd * (error_x - self.pre_error_x) / delta_t
+        self.pre_error_x = error_x
+
+        Pout_y = self.kp * error_y
+        self.error_sum_y += (error_y * delta_t)
+        Iout_y = self.ki * self.error_sum_y
+        Dout_y = self.kd * (error_y - self.pre_error_y) / delta_t
+        self.pre_error_y = error_y
+
+        # print("error_sum_x: ", self.error_sum_x, " error_sum_y: ", self.error_sum_x,
+        #       " pre_error_x: ", self.pre_error_x, " pre_error_y: ", self.pre_error_y)
+
+        return Pout_x + Iout_x + Dout_x, Pout_y + Iout_y + Dout_y  # Bo: 因为PID的对象从原来的鼠标移动距离修改为了像素距离，取消了取int
     # *****************************************************************************
 
     # def lock(aims, mouse, top_x, top_y, len_x, len_y, lock_choice, head_first):
@@ -147,12 +178,33 @@ class Locker(object):
             y_center, height = self.len_y * float(y_center) + self.top_y, self.len_y * float(height)
             # print('target size is ', width, height)  # for debug
 
+            dis_x = mouse_pos_x - x_center
+            dis_y = mouse_pos_y - y_center
+            print('Before PID: ', f'{dis_x:.2f},', f'{dis_y:.2f}')  # for debug
+
+            # Bo：自动开枪模式。在PID之前的距离值更接近真实距离(虽然是按FOV换算后的鼠标距离)
+            # TBD：开枪考虑远近距离，提前量？
+            if self.auto_shoot:
+                if abs(dis_x) < 2 and abs(dis_y) < 2 and (time.time() - self.shot_time > 2.2):  # 狙击枪开枪+自动开镜大概的时间间隔
+                    ghub.mouse_down()
+                    ghub.mouse_up()
+                    self.shot_time = time.time()
+                    # print('shot!')  # for debug
+
+            # TBD:修改PID的对象从原up主的鼠标移动距离为实际的像素距离（效果应该差不多）
+            if self.lock_strategy == 'pid':
+                # dis_x, dis_y = self.pid(dis_x, dis_y
+                # dis_x, dis_y = self.pid2(dis_x, dis_y, delta_t)  # 考虑采样时间及抗饱和(效果不好暂时启用)
+                dis_x, dis_y = self.pid3(dis_x, dis_y, delta_t)  # 考虑采样时间，设置PID的积分项I的上限值
+
+            print('After PID: ', f'{dis_x:.2f},', f'{dis_y:.2f}')  # for debug
+
             # *****************************************************************************
             # 算法1：up主的方法，默认参数下比较平滑，但要几帧才能拉到位置，目标高速移动情况下可能较难命中(需要改变参数最好达到1帧拉枪)
-            # rel_x = int(k / self.lock_sen * atan((mouse_pos_x - x_center) / 640) * 640)
+            # rel_x = int(k / self.lock_sen * atan(dis_x / 640) * 640)
             # *****************************************************************************
             # 算法2: bo的方法 (详见下文)；目前的锁定效果接近于一帧拉枪。
-            rel_x = int(1041.987412 * atan((mouse_pos_x - x_center) / 480))
+            rel_x = int(1041.987412 * atan(dis_x / 480))
             # *****************************************************************************
             # *****************************************************************************
             # 详见J:\Project\yolov5\QQ群里的代码及资料\C + +FOV.h里面的计算方式！
@@ -180,20 +232,20 @@ class Locker(object):
             if tag in [self.lock_tag[0], self.lock_tag[2]]:  # head
                 # *****************************************************************************
                 # 算法1：up主的方法
-                # rel_y = int(k / self.lock_sen * atan((mouse_pos_y - y_center) / 640) * 640)
+                # rel_y = int(k / self.lock_sen * atan(dis_y / 640) * 640)
                 # *****************************************************************************
                 # 算法2: bo的方法
-                rel_y = int(1027.504313 * atan((mouse_pos_y - y_center) / 480))
+                rel_y = int(1027.504313 * atan(dis_y / 480))
                 # *****************************************************************************
                 if self.flag:  # 如果是压枪状态就暂时不锁定了，up主新版代码后来这里其实删掉了
                     return
             elif tag in [self.lock_tag[1], self.lock_tag[3]]:  # body
                 # *****************************************************************************
                 # 算法1：up主的方法
-                # rel_y = int(k / self.lock_sen * atan((mouse_pos_y - y_center + 1 / 6 * height) / 640) * 640)
+                # rel_y = int(k / self.lock_sen * atan((dis_y + 1 / 6 * height) / 640) * 640)
                 # *****************************************************************************
                 # 算法2: bo的方法
-                rel_y = int(1027.504313 * atan((mouse_pos_y - y_center + 1 / 6 * height) / 480))
+                rel_y = int(1027.504313 * atan((dis_y + 1 / 6 * height) / 480))
                 # *****************************************************************************
                 if self.flag:  # 如果是压枪状态就暂时不锁定了，up主新版代码后来这里其实删掉了
                     return
@@ -204,24 +256,10 @@ class Locker(object):
             rel_y = int(rel_y / 2.5 / self.lock_smooth_bo)
             # *****************************************************************************
 
-            print("Before PID: ", -rel_x, -rel_y)  # for debug
-
-            # Bo：自动开枪模式。在PID之前的距离值更接近真实距离(虽然是按FOV换算后的鼠标距离)
-            # TBD：开枪考虑远近距离，提前量？
-            if self.auto_shoot:
-                if abs(rel_x) < 2 and abs(rel_y) < 2 and (time.time() - self.shot_time > 2.2):  # 狙击枪开枪+自动开镜大概的时间间隔
-                    ghub.mouse_down()
-                    ghub.mouse_up()
-                    self.shot_time = time.time()
-
-            # if abs(rel_x) < 3 and abs(rel_y) < 3:  # for debug
-            #     print('locked!!!')
-
-            if self.lock_strategy == 'pid':
-                # rel_x, rel_y = self.pid(rel_x, rel_y)
-                rel_x, rel_y = self.pid2(rel_x, rel_y, delta_t)  # 考虑采样时间及抗饱和
-
-            print("After PID: ", -rel_x, -rel_y)  # for debug
+            print("转换并平滑后的鼠标移动距离: ", rel_x, ',', rel_y)  # for debug
+            # 原up主PID的对象是鼠标的移动距离（Bo修改了像素距离）
+            # if self.lock_strategy == 'pid':
+            #     rel_x, rel_y = self.pid(rel_x, rel_y)
 
             ghub.mouse_xy(-rel_x, -rel_y)
 
