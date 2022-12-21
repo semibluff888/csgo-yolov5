@@ -61,7 +61,6 @@ parser.add_argument('--region-stay-center', type=bool, default=True, help='为Fa
 # 原up主下面的前两个参数作用实际一样的，作用重复。
 parser.add_argument('--lock-sen', type=float, default=1.4, help='lock幅度系数；若在桌面试用请调成1，在游戏中(csgo)则为灵敏度')
 parser.add_argument('--lock-smooth', type=float, default=3, help='lock平滑系数；越大越平滑，最低1.0')  # up之前默认是3(yolov5-6.1重构版本)
-parser.add_argument('--lock-smooth-bo', type=float, default=1, help='lock平滑系数；越大越平滑，最低1.0')  # Bo:计算FOV后的调整参数
 # 注意：使用ghub驱动需要安装ghub旧版.exe且开机后打开驱动软件。参考J:\Project\yolov5\ghub.txt
 # 暂时不推荐使用。。。TBD: 同等的鼠标移动量，在CSGO里面，使用罗技ghub驱动貌似比win32要小很多。但貌似静态目标情况下，移动又更加震荡。。。
 parser.add_argument('--use-ghub-device', type=bool, default=False, help='是否使用罗技ghub驱动操控鼠标')  # added by Bo
@@ -88,10 +87,14 @@ parser.add_argument('--lock-strategy', type=str, default='pid', help='lock模式
 # 0.8； 0.1； 0.1貌似比上面更稳也更吊?
 # 0.9 0.1 0也不错
 # PID yyds!!貌似考虑采样时间delta_t后，系统更加稳定了！！！哈哈哈
+# I可以有效增加对于动态目标的追踪，但是也是超调(震荡)的主要来源！
 # 如果采用PID算法2，即考虑采样时间，经测试，平均loop时间为0.016810093150538507秒，平均FPS(即倒数):59.5。则原PID参数的I应该放大60倍，D要缩小60倍。
-parser.add_argument('--p-i-d', type=tuple, default=(0.8, 0.1*60, 0.1/60), help='PID控制算法p,i,d参数调整')
+parser.add_argument('--p-i-d', type=tuple, default=(1.6, 0.3*60, 0.1/60), help='PID控制算法p,i,d参数调整')  # lock_smooth_bo=2
+parser.add_argument('--lock-smooth-bo', type=float, default=2, help='lock平滑系数；越大越平滑，最低1.0')  # Bo:计算FOV后的调整参数
+# parser.add_argument('--p-i-d', type=tuple, default=(0.8, 0.1*60, 0.1/60), help='PID控制算法p,i,d参数调整')  # lock_smooth_bo=1
 # parser.add_argument('--p-i-d', type=tuple, default=(0.8, 0.1, 0.1), help='PID控制算法p,i,d参数调整')
 parser.add_argument('--anti-flag', type=bool, default=False, help='PID抗积分饱和, True则error_sum_x会清0')  # True震荡小了，但P和I貌似要增加
+parser.add_argument('--i-max', type=float, default=30, help='设置PID的积分项I的上限值，防止超调')  # Bo:参考qq群的资料，板球PID里面有这一项
 parser.add_argument('--auto-shoot', type=bool, default=False, help='是否开启自动射击模式')  # Bo: 自动开枪模式
 parser.add_argument('--auto-switch', type=bool, default=False, help='是否开启自动切枪')  # Bo: 自动开枪模式时,awp射击后自动切枪
 ###########################################################################################
@@ -312,8 +315,8 @@ while True:
         # 注意，下面的grab_screen_mss返回值是(height, width, channel)
         # cv2里面的cv2.imread和cv2.resize的返回值，也一样，都是(H,W,C)
         img0 = grab_screen_mss(monitor)
-        img0 = cv2.resize(img0, (locker.len_x, locker.len_y))  # 注意第2个参数是目标size，是元组形式(w,h)，顺序与输入(HWC)相反。
-        # 上面这句话似乎没用
+        # img0 = cv2.resize(img0, (locker.len_x, locker.len_y))  # 注意第2个参数是目标size，是元组形式(w,h)，顺序与输入(HWC)相反。
+        # 上面这句话似乎没用,暂时注释掉
     else:
         img0 = grab_screen_win32(region=(locker.top_x, locker.top_y, locker.top_x + locker.len_x, locker.top_y + locker.len_y))
         img0 = cv2.resize(img0, (locker.len_x, locker.len_y))
