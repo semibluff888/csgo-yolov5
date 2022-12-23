@@ -28,10 +28,10 @@ parser.add_argument('--model-path', type=str,
                     # default=r'J:\Project\yolov5\mydatasets\csgo_for_training4\csgo_for_training4_120epoch_6905pic_best.pt',
                     # default=r'J:\Project\yolov5\mydatasets\csgo_for_training4\csgo_for_training4_120epoch_6905pic_best.engine',
                     # default='csgo/csgo.pt',
-                    default='csgo/csgo.engine',
+                    # default='csgo/csgo.engine',
+                    default=r'J:\Project\yolov5\mydatasets\csgo_for_training4\csgo_imgsz_320.engine',
                     help='模型地址')
 parser.add_argument('--use-cuda', type=bool, default=True, help='是否使用cuda')
-parser.add_argument('--imgsz', type=int, default=640, help='和你训练模型时imgsz一样')
 parser.add_argument('--conf-thres', type=float, default=0.50, help='置信阈值')  # yolov5 default 0.25; up主default 0.75
 parser.add_argument('--iou-thres', type=float, default=0.45, help='交并比阈值')
 
@@ -52,7 +52,8 @@ parser.add_argument('--screenshot-method', type=str, default='mss', help='pyqt5,
 # 如果用mss截图，下面2个参数会起作用，1280*720 csgo窗口模式刚好为1/2(窗体有标题栏，可能略有出入)；如果用pyqt5截图是直接指定窗口，下面2个参数不起作用
 # parser.add_argument('--region', type=tuple, default=(0.3, 0.3), help='检测范围；分别为横向和竖向，(1.0, 1.0)表示全屏检测，越低检测范围越小(始终保持屏幕中心为中心)')
 # Bo: 因为改用TensorRT加速推理时，输入图像最好要是正方形！不然要修改letterbox参数，进而可能会影响推理速度，所以修改了上面up主原来的方式，直接用像素代替。
-parser.add_argument('--region', type=tuple, default=(640, 640), help='检测范围；分别为横向和竖向，始终保持屏幕中心为中心，截图的宽和高')
+parser.add_argument('--region', type=tuple, default=(320, 320), help='检测范围；分别为横向和竖向，始终保持屏幕中心为中心，截图的宽和高')
+parser.add_argument('--imgsz', type=int, default=320, help='和你训练模型时imgsz一样')
 parser.add_argument('--region-stay-center', type=bool, default=True, help='为False则region参数不起作用，会跟pyqt5一样，直接去寻找窗口的位置')  # added by Bo
 # region_stay_center= False的话，效果并不好，因为需要在while循环里一直GetWindowRect，不建议使用！
 
@@ -89,6 +90,9 @@ parser.add_argument('--lock-strategy', type=str, default='pid', help='lock模式
 # PID yyds!!貌似考虑采样时间delta_t后，系统更加稳定了！！！哈哈哈
 # I可以有效增加对于动态目标的追踪，但是也是超调(震荡)的主要来源！
 # 如果采用PID算法2，即考虑采样时间，经测试，平均loop时间为0.016810093150538507秒，平均FPS(即倒数):59.5。则原PID参数的I应该放大60倍，D要缩小60倍。
+# lock_smooth_bo=2时，1.6, 0.4*60, 0.1/60效果也差不多
+# (修改为imgsz=320大小的模型后，加速后检测不到5ms，实际检测帧率达到90)lock_smooth_bo=2时，1.6(或者2), 0.3*60, 0.1/60效果不错
+# (修改为imgsz=320大小的模型后，加速后检测不到5ms，实际检测帧率达到90)lock_smooth_bo=2时，1.6, 0.4*60, 0.1/60效果不错;1.6, 0.3*90, 0.1/90也不错
 parser.add_argument('--p-i-d', type=tuple, default=(1.6, 0.3*60, 0.1/60), help='PID控制算法p,i,d参数调整')  # lock_smooth_bo=2
 parser.add_argument('--lock-smooth-bo', type=float, default=2, help='lock平滑系数；越大越平滑，最低1.0')  # Bo:计算FOV后的调整参数
 # parser.add_argument('--p-i-d', type=tuple, default=(0.8, 0.1*60, 0.1/60), help='PID控制算法p,i,d参数调整')  # lock_smooth_bo=1
